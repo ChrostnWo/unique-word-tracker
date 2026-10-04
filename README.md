@@ -78,6 +78,10 @@ Obsidian prefixes these with the plugin name.
 | Case sensitive | Treat Focus and focus as different words |
 | Include code / frontmatter | Count those regions too |
 
+## Support
+
+If this plugin is useful, you can [buy me a coffee](https://buymeacoffee.com/chrostn).
+
 ## License
 
 MIT
