@@ -4,6 +4,14 @@ Track how often you use specific words in your notes.
 
 Unique Word Tracker watches a list you choose, then shows those counts next to a leaderboard of the rest of your writing. Switch between the whole vault, the note you have open, or that note's folder.
 
+## Pages
+
+- [Install](docs/install.md)
+- [Usage](docs/usage.md)
+- [Support](docs/support.md)
+- [Changelog](CHANGELOG.md)
+- [Buy Me a Coffee](https://buymeacoffee.com/chrostn)
+
 ## Features
 
 - Watchlist for words you want counted first
