@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0
+
+- Add a 3D graph of the words in the current scope
+- Metric space layout: pick a different metric for X, Y, and Z
+- Co-occurrence layout: words that share a note are linked, with height driven by a metric
+- Size and color are separate metrics: count, notes, spread, links, length, or watchlist
+- Click a node to open the note breakdown
+- Command: Open 3D graph
+
 ## 1.0.1
 
 - Add a Buy Me a Coffee link so the heart icon in Obsidian opens https://buymeacoffee.com/chrostn

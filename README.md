@@ -2,7 +2,7 @@
 
 Track how often you use specific words in your notes.
 
-Unique Word Tracker watches a list you choose, then shows those counts next to a leaderboard of the rest of your writing. Switch between the whole vault, the note you have open, or that note's folder.
+Unique Word Tracker watches a list you choose, then shows those counts next to a leaderboard of the rest of your writing. Switch between the whole vault, the note you have open, or that note's folder. Open the 3D graph when you want each node to use a different metric.
 
 ## Pages
 
@@ -17,6 +17,8 @@ Unique Word Tracker watches a list you choose, then shows those counts next to a
 - Watchlist for words you want counted first
 - Three scopes: whole vault, current note, current folder
 - Most-used word list with a clickable note breakdown
+- 3D graph with separate metrics for position, size, and color
+- Metric space or co-occurrence layout
 - Live updates after you edit a note
 - Stopwords and folder excludes
 - Works on desktop and mobile
@@ -51,6 +53,10 @@ After the plugin is accepted into the directory:
    - **This note** — only the active file
    - **This folder** — notes in the same folder as that file
 4. Click a word to see which notes use it
+5. Switch to **3D graph** and assign metrics:
+   - **Metric space** — X, Y, and Z are independent metrics
+   - **Co-occurrence** — words that share a note pull together; height is its own metric
+   - **Size** and **Color** — count, notes, spread, links, length, or watchlist
 
 Use **Rescan** only after changing tokenization settings such as minimum length, case sensitivity, or excluded folders.
 
@@ -59,6 +65,7 @@ Use **Rescan** only after changing tokenization settings such as minimum length,
 Obsidian prefixes these with the plugin name.
 
 - Open panel
+- Open 3D graph
 - Rescan vault
 - Count in whole vault
 - Count in current note
@@ -78,11 +85,12 @@ Obsidian prefixes these with the plugin name.
 | --- | --- |
 | Default scope | Global, current note, or current folder |
 | Watchlist | Words you always want counted |
-| Stopwords | Hidden from the most-used list. Still counted if they are on the watchlist |
+| Stopwords | Hidden from the most-used list and the graph. Still counted if they are on the watchlist |
 | Exclude folders | Skip Templates, attachments, trash, and similar folders |
 | Minimum word length | Ignore tiny tokens |
 | Minimum count | Floor for the most-used list |
 | Top N | Length of the leaderboard |
+| Graph nodes | How many words the 3D graph draws |
 | Case sensitive | Treat Focus and focus as different words |
 | Include code / frontmatter | Count those regions too |
 
