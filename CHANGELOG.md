@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0
+
+- 3D graph opens as a spiral galaxy instead of the force layout that flung words off screen
+- Frequent words sit nearer the bright core; other words follow three rotating arms
+- Shared notes draw as faint filaments between stars
+- Connections layout is capped so nodes stay in view
+- Drag still orbits, scroll still zooms, click a star to isolate its links
+
 ## 1.2.0
 
 - 3D graph now opens on word connections

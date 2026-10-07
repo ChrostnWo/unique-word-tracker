@@ -2,7 +2,7 @@
 
 Track how often you use specific words in your notes.
 
-Unique Word Tracker watches a list you choose, then shows those counts next to a leaderboard of the rest of your writing. Switch between the whole vault, the note you have open, or that note's folder. Open the 3D graph when you want each node to use a different metric.
+Unique Word Tracker watches a list you choose, then shows those counts next to a leaderboard of the rest of your writing. Switch between the whole vault, the note you have open, or that note's folder. Open the 3D graph to see the words as a spiral galaxy.
 
 ## Pages
 
@@ -17,8 +17,9 @@ Unique Word Tracker watches a list you choose, then shows those counts next to a
 - Watchlist for words you want counted first
 - Three scopes: whole vault, current note, current folder
 - Most-used word list with a clickable note breakdown
-- 3D connection graph: words that share a note are linked
-- Metric space or co-occurrence layout
+- 3D galaxy graph: words orbit in spiral arms, frequent words nearer the core
+- Shared notes show up as filaments between stars
+- Metric space and a capped connection layout are still in the Layout menu
 - Live updates after you edit a note
 - Stopwords and folder excludes
 - Works on desktop and mobile
@@ -53,7 +54,7 @@ After the plugin is accepted into the directory:
    - **This note** — only the active file
    - **This folder** — notes in the same folder as that file
 4. Click a word to see which notes use it
-5. Switch to **3D graph**. Words that appear in the same note are linked. Click a word to see only its connections. Metric space is still in the Layout menu if you want X, Y, and Z to be separate metrics.
+5. Switch to **3D graph**. It opens as a galaxy: drag to orbit, scroll to zoom, and click a star to see which words share a note with it. Layout can switch to Connections or Metric space.
 
 Use **Rescan** only after changing tokenization settings such as minimum length, case sensitivity, or excluded folders.
 

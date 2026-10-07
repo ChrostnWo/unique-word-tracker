@@ -22,18 +22,20 @@ The rest of the writing is ranked below the watchlist. Stopwords are hidden from
 
 ## 3D graph
 
-Switch the panel to **3D graph**, or run **Open 3D graph** from the command palette. It opens on **Connections**.
+Switch the panel to **3D graph**, or run **Open 3D graph** from the command palette. It opens on **Galaxy**.
 
-Each node is a word. A line means those two words appear in the same note. Thicker lines share more notes. Click a word to dim everything else and list its connections underneath.
+Words are placed like a star-forming spiral. The brightest, most frequent words sit nearer the core. Three arms rotate slowly. A filament means those two words appear in the same note. Click a star to dim the rest and list its connections.
 
-Size and color can still use a different metric from position:
+Size and color still follow a metric:
 
 | Channel | What it changes |
 | --- | --- |
 | X, Y, Z | Position in Metric space |
-| Height | Vertical position in Co-occurrence layout |
-| Size | Node radius |
-| Color | Blue is low, amber and red are high |
+| Height | Vertical position in Connections layout |
+| Size | Star radius, and how close a word sits to the core in Galaxy |
+| Color | Stellar color. Hotter, brighter stars are higher on the metric |
+
+**Connections** still links words that share a note, but the forces are capped so the cloud stays on screen. **Metric space** places words on the chosen axes. Drag to orbit, scroll or pinch to zoom.
 
 Metrics:
 
@@ -43,8 +45,6 @@ Metrics:
 - **Links** — how many other graph words share a note with it
 - **Length** — character length
 - **Watchlist** — on or off
-
-**Metric space** places words on those axes. **Co-occurrence** pulls words together when they appear in the same note. Edges can be turned off. Drag to orbit, scroll or pinch to zoom, and click a word for its notes.
 
 ## What gets counted
 

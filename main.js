@@ -37,7 +37,7 @@ const DEFAULT_SETTINGS = {
   includeFrontmatter: false,
   scope: "global",
   panelMode: "list",
-  graphLayout: "links",
+  graphLayout: "galaxy",
   graphNodes: 42,
   graphShowEdges: true,
   graphX: "count",
@@ -112,16 +112,67 @@ function mixHex(t) {
   return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
 }
 
-function wordJitter(word) {
-  let h = 2166136261;
+function hashUnit(word, salt) {
+  let h = 2166136261 ^ (Number(salt) || 0);
   const s = String(word || "");
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  const u = ((h >>> 0) % 1000) / 1000;
-  const v = (((h >>> 8) % 1000) / 1000);
-  return { x: (u - 0.5) * 18, y: (v - 0.5) * 18, z: (((h >>> 16) % 1000) / 1000 - 0.5) * 18 };
+  return ((h >>> 0) % 10000) / 10000;
+}
+
+function wordJitter(word) {
+  return {
+    x: (hashUnit(word, 1) - 0.5) * 18,
+    y: (hashUnit(word, 2) - 0.5) * 18,
+    z: (hashUnit(word, 3) - 0.5) * 18
+  };
+}
+
+function starColor(t) {
+  const stops = [[255, 244, 230], [176, 210, 255], [255, 196, 112], [255, 118, 78]];
+  const x = clamp01(t) * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(x));
+  const f = x - i;
+  const a = stops[i];
+  const b = stops[i + 1];
+  const c = a.map((v, k) => Math.round(v + (b[k] - v) * f));
+  return { rgb: `rgb(${c[0]}, ${c[1]}, ${c[2]})`, r: c[0], g: c[1], b: c[2] };
+}
+
+function galaxyPlacement(word, index, total, coreBias) {
+  const arms = 3;
+  const arm = index % arms;
+  const along = (Math.floor(index / arms) + 0.35) / Math.max(1, Math.ceil(total / arms));
+  const turns = 1.75;
+  const jitter = (hashUnit(word, 7) - 0.5) * 0.42;
+  const angle = arm * (Math.PI * 2 / arms) + along * turns * Math.PI * 2 + jitter;
+  const radial = 0.16 + 0.84 * (0.38 * along + 0.62 * (1 - clamp01(coreBias)));
+  const radius = 48 + radial * 236 + (hashUnit(word, 11) - 0.5) * 16;
+  const y = (hashUnit(word, 13) - 0.5) * (8 + radial * 26);
+  return {
+    angle,
+    radius,
+    y,
+    arm,
+    phase: hashUnit(word, 17) * Math.PI * 2,
+    omega: 0.0024 / Math.sqrt(Math.max(0.4, radius / 70)),
+    x: Math.cos(angle) * radius,
+    z: Math.sin(angle) * radius
+  };
+}
+
+function fibonacciSphere(index, total, radius) {
+  const n = Math.max(1, total);
+  const y = 1 - (index + 0.5) / n * 2;
+  const ring = Math.sqrt(Math.max(0, 1 - y * y));
+  const theta = Math.PI * (3 - Math.sqrt(5)) * index;
+  return {
+    x: Math.cos(theta) * ring * radius,
+    y: y * radius * 0.72,
+    z: Math.sin(theta) * ring * radius
+  };
 }
 
 class WordTrackerView extends ItemView {
@@ -131,7 +182,8 @@ class WordTrackerView extends ItemView {
     this.filter = "";
     this.selectedWord = null;
     this.hoverWord = null;
-    this._cam = { yaw: 0.6, pitch: 0.35, dist: 520 };
+    this._cam = { yaw: 0.4, pitch: 0.78, dist: 680 };
+    this._spin = 0;
     this._pos = {};
     this._raf = 0;
     this._graphCleanup = null;
@@ -205,7 +257,7 @@ class WordTrackerView extends ItemView {
       btn.onclick = async () => {
         this.plugin.settings.panelMode = mode.id;
         if (mode.id === "graph") {
-          this.plugin.settings.graphLayout = "links";
+          this.plugin.settings.graphLayout = "galaxy";
           this.plugin.settings.graphShowEdges = true;
         }
         await this.plugin.saveSettings();
@@ -382,9 +434,10 @@ class WordTrackerView extends ItemView {
     const layoutWrap = toolbar.createDiv({ cls: "wt-metric" });
     layoutWrap.createSpan({ text: "Layout" });
     const layout = layoutWrap.createEl("select", { cls: "wt-select" });
+    layout.createEl("option", { text: "Galaxy", value: "galaxy" });
     layout.createEl("option", { text: "Connections", value: "links" });
     layout.createEl("option", { text: "Metric space", value: "metric" });
-    layout.value = this.plugin.settings.graphLayout === "metric" ? "metric" : "links";
+    layout.value = this.plugin.settings.graphLayout === "metric" ? "metric" : this.plugin.settings.graphLayout === "links" ? "links" : "galaxy";
     layout.onchange = async () => {
       this.plugin.settings.graphLayout = layout.value;
       await this.plugin.saveSettings();
@@ -393,7 +446,7 @@ class WordTrackerView extends ItemView {
 
     if (this.plugin.settings.graphLayout === "links") {
       this.metricSelect(toolbar, "Height", "graphHeight");
-    } else {
+    } else if (this.plugin.settings.graphLayout === "metric") {
       this.metricSelect(toolbar, "X", "graphX");
       this.metricSelect(toolbar, "Y", "graphY");
       this.metricSelect(toolbar, "Z", "graphZ");
@@ -413,7 +466,8 @@ class WordTrackerView extends ItemView {
 
     const reset = toolbar.createEl("button", { text: "Reset view", cls: "wt-edge-btn" });
     reset.onclick = () => {
-      this._cam = { yaw: 0.6, pitch: 0.35, dist: 520 };
+      this._cam = { yaw: 0.4, pitch: 0.78, dist: 680 };
+      this._spin = 0;
       this._pos = {};
       this.render();
     };
@@ -433,14 +487,19 @@ class WordTrackerView extends ItemView {
     const hud = stage.createDiv({ cls: "wt-graph-hud", text: "Drag to orbit · scroll or pinch to zoom · click a word to see its connections" });
 
     const legend = body.createDiv({ cls: "wt-legend" });
-    const layoutName = this.plugin.settings.graphLayout === "metric" ? "Metric space" : "Connections";
-    const axes = this.plugin.settings.graphLayout === "metric"
+    const layoutMode = this.plugin.settings.graphLayout === "metric" ? "metric" : this.plugin.settings.graphLayout === "links" ? "links" : "galaxy";
+    const layoutName = layoutMode === "metric" ? "Metric space" : layoutMode === "links" ? "Connections" : "Galaxy";
+    const axes = layoutMode === "metric"
       ? `X ${metricLabel(this.plugin.settings.graphX)} · Y ${metricLabel(this.plugin.settings.graphY)} · Z ${metricLabel(this.plugin.settings.graphZ)}`
-      : `Height ${metricLabel(this.plugin.settings.graphHeight)} · ${graph.edges.length} links`;
+      : layoutMode === "links"
+        ? `Height ${metricLabel(this.plugin.settings.graphHeight)} · ${graph.edges.length} links`
+        : `Core ${metricLabel(this.plugin.settings.graphSize)} · ${graph.edges.length} filaments`;
     legend.createSpan({ text: `${layoutName} · ${axes} · Size ${metricLabel(this.plugin.settings.graphSize)} · Color ${metricLabel(this.plugin.settings.graphColor)}` });
     legend.createDiv({
       cls: "wt-muted",
-      text: "A line means those words appear in the same note. Thicker lines share more notes. Click a word to isolate its connections."
+      text: layoutMode === "galaxy"
+        ? "Words sit in a spiral like a star-forming galaxy. Frequent words stay nearer the core. A filament means those words share a note."
+        : "A line means those words appear in the same note. Thicker lines share more notes. Click a word to isolate its connections."
     });
 
     this.mountGraph(canvas, hud, graph);
@@ -476,17 +535,28 @@ class WordTrackerView extends ItemView {
   mountGraph(canvas, hud, graph) {
     const view = this;
     const settings = this.plugin.settings;
-    const nodes = graph.nodes.map((node) => {
+    const layoutMode = settings.graphLayout === "metric" ? "metric" : settings.graphLayout === "links" ? "links" : "galaxy";
+    const nodes = graph.nodes.map((node, index) => {
       const stored = this._pos[node.id];
-      const jitter = wordJitter(node.id);
-      const copy = Object.assign({}, node, stored || {
-        x: jitter.x,
-        y: jitter.y,
-        z: jitter.z,
-        vx: 0,
-        vy: 0,
-        vz: 0
-      });
+      const exploded = stored && (Math.abs(stored.x) > 620 || Math.abs(stored.y) > 620 || Math.abs(stored.z) > 620);
+      const place = galaxyPlacement(node.id, index, graph.nodes.length, clamp01((Number(node.count) || 0) / (graph.nodes[0] && graph.nodes[0].count ? graph.nodes[0].count : 1)));
+      const fib = fibonacciSphere(index, graph.nodes.length, 168);
+      let copy;
+      if (layoutMode === "galaxy") {
+        copy = Object.assign({}, node, stored && stored.angle != null && !exploded ? stored : place, { id: node.id });
+        copy.radius = place.radius;
+        copy.baseY = place.y;
+        copy.omega = place.omega;
+        copy.phase = place.phase;
+        if (copy.angle == null) copy.angle = place.angle;
+      } else if (!stored || exploded) {
+        copy = Object.assign({}, node, { x: fib.x, y: fib.y, z: fib.z, vx: 0, vy: 0, vz: 0 });
+      } else {
+        copy = Object.assign({}, node, stored);
+      }
+      copy.vx = copy.vx || 0;
+      copy.vy = copy.vy || 0;
+      copy.vz = copy.vz || 0;
       return copy;
     });
     const byId = {};
@@ -508,6 +578,20 @@ class WordTrackerView extends ItemView {
       return clamp01(((Number(node[key]) || 0) - range.min) / (range.max - range.min));
     };
 
+    const dust = [];
+    for (let i = 0; i < 170; i++) {
+      const a = hashUnit("dust" + i, 1) * Math.PI * 2;
+      const b = (hashUnit("dust" + i, 2) - 0.5) * Math.PI;
+      const r = 280 + hashUnit("dust" + i, 3) * 520;
+      dust.push({
+        x: Math.cos(a) * Math.cos(b) * r,
+        y: Math.sin(b) * r * 0.55,
+        z: Math.sin(a) * Math.cos(b) * r,
+        s: 0.4 + hashUnit("dust" + i, 4) * 1.5,
+        tw: hashUnit("dust" + i, 5) * Math.PI * 2
+      });
+    }
+
     const pointers = new Map();
     let dragging = false;
     let lastX = 0;
@@ -518,8 +602,10 @@ class WordTrackerView extends ItemView {
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      const width = rect.width || canvas.clientWidth || 640;
+      const height = rect.height || canvas.clientHeight || 460;
+      canvas.width = Math.max(1, Math.floor(width * dpr));
+      canvas.height = Math.max(1, Math.floor(height * dpr));
     };
     resize();
     const resizeObs = new ResizeObserver(resize);
@@ -540,7 +626,7 @@ class WordTrackerView extends ItemView {
         const dx = pts[0].x - pts[1].x;
         const dy = pts[0].y - pts[1].y;
         const dist = Math.hypot(dx, dy);
-        if (pinch) view._cam.dist = Math.max(180, Math.min(1100, view._cam.dist * (pinch / dist)));
+        if (pinch) view._cam.dist = Math.max(220, Math.min(1400, view._cam.dist * (pinch / dist)));
         pinch = dist;
         return;
       }
@@ -550,12 +636,13 @@ class WordTrackerView extends ItemView {
       lastX = e.clientX;
       lastY = e.clientY;
       view._cam.yaw += dx * 0.008;
-      view._cam.pitch = Math.max(-1.25, Math.min(1.25, view._cam.pitch + dy * 0.008));
+      view._cam.pitch = Math.max(-1.2, Math.min(1.35, view._cam.pitch + dy * 0.008));
     };
     const onUp = (e) => {
       const start = pointers.get(e.pointerId);
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinch = 0;
+      dragging = pointers.size > 0;
       if (!start || pointers.size) return;
       const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
       if (moved > 6) return;
@@ -566,7 +653,7 @@ class WordTrackerView extends ItemView {
       let bestD = 28;
       for (const hit of projected) {
         const d = Math.hypot(hit.sx - x, hit.sy - y);
-        if (d < hit.r + 8 && d < bestD) {
+        if (d < Math.max(hit.r, 10) + 8 && d < bestD) {
           best = hit;
           bestD = d;
         }
@@ -578,10 +665,11 @@ class WordTrackerView extends ItemView {
     };
     const onWheel = (e) => {
       e.preventDefault();
-      view._cam.dist = Math.max(180, Math.min(1100, view._cam.dist * (e.deltaY > 0 ? 1.08 : 0.92)));
+      view._cam.dist = Math.max(220, Math.min(1400, view._cam.dist * (e.deltaY > 0 ? 1.08 : 0.92)));
     };
     const onLeave = () => {
       view.hoverWord = null;
+      dragging = false;
     };
     const onHover = (e) => {
       const rect = canvas.getBoundingClientRect();
@@ -591,7 +679,7 @@ class WordTrackerView extends ItemView {
       let bestD = 24;
       for (const hit of projected) {
         const d = Math.hypot(hit.sx - x, hit.sy - y);
-        if (d < hit.r + 6 && d < bestD) {
+        if (d < Math.max(hit.r, 8) + 6 && d < bestD) {
           best = hit;
           bestD = d;
         }
@@ -620,8 +708,15 @@ class WordTrackerView extends ItemView {
     };
 
     const step = () => {
-      const layoutMode = settings.graphLayout === "links" ? "links" : "metric";
-      if (layoutMode === "metric") {
+      if (layoutMode === "galaxy") {
+        view._spin = (view._spin || 0) + 0.004;
+        for (const node of nodes) {
+          node.angle += node.omega || 0.002;
+          node.x = Math.cos(node.angle) * node.radius;
+          node.z = Math.sin(node.angle) * node.radius;
+          node.y = node.baseY + Math.sin(view._spin + node.phase) * 3.2;
+        }
+      } else if (layoutMode === "metric") {
         for (const node of nodes) {
           const j = wordJitter(node.id);
           const tx = (normFixed(node, settings.graphX) - 0.5) * 280 + j.x;
@@ -639,8 +734,9 @@ class WordTrackerView extends ItemView {
             let dx = a.x - b.x;
             let dy = a.y - b.y;
             let dz = a.z - b.z;
-            let dist = Math.hypot(dx, dy, dz) || 0.01;
-            const force = 520 / (dist * dist);
+            let dist = Math.hypot(dx, dy, dz);
+            if (dist < 36) dist = 36;
+            const force = Math.min(1.6, 900 / (dist * dist));
             dx /= dist; dy /= dist; dz /= dist;
             a.vx += dx * force; a.vy += dy * force; a.vz += dz * force;
             b.vx -= dx * force; b.vy -= dy * force; b.vz -= dz * force;
@@ -653,7 +749,7 @@ class WordTrackerView extends ItemView {
           const dy = b.y - a.y;
           const dz = b.z - a.z;
           const dist = Math.hypot(dx, dy, dz) || 0.01;
-          const mag = (dist - 92) * 0.012 * Math.min(2, edge.w);
+          const mag = Math.max(-1.2, Math.min(1.2, (dist - 108) * 0.01 * Math.min(2, edge.w)));
           a.vx += dx / dist * mag;
           a.vy += dy / dist * mag;
           a.vz += dz / dist * mag;
@@ -662,19 +758,32 @@ class WordTrackerView extends ItemView {
           b.vz -= dz / dist * mag;
         }
         for (const node of nodes) {
-          const tz = (normFixed(node, settings.graphHeight) - 0.5) * 240;
-          node.vz += (tz - node.z) * 0.02;
-          node.vx += -node.x * 0.01;
-          node.vy += -node.y * 0.01;
-          node.vx *= 0.82; node.vy *= 0.82; node.vz *= 0.82;
+          const tz = (normFixed(node, settings.graphHeight) - 0.5) * 180;
+          node.vz += (tz - node.z) * 0.015;
+          node.vx += -node.x * 0.012;
+          node.vy += -node.y * 0.012;
+          node.vz += -node.z * 0.004;
+          node.vx *= 0.74; node.vy *= 0.74; node.vz *= 0.74;
           node.x += node.vx; node.y += node.vy; node.z += node.vz;
+          const span = Math.hypot(node.x, node.y, node.z);
+          if (span > 340) {
+            const s = 340 / span;
+            node.x *= s; node.y *= s; node.z *= s;
+          }
         }
       }
-      for (const node of nodes) this._pos[node.id] = { x: node.x, y: node.y, z: node.z, vx: node.vx, vy: node.vy, vz: node.vz };
+      for (const node of nodes) {
+        this._pos[node.id] = {
+          x: node.x, y: node.y, z: node.z,
+          vx: node.vx, vy: node.vy, vz: node.vz,
+          angle: node.angle, radius: node.radius, baseY: node.baseY, phase: node.phase, omega: node.omega
+        };
+      }
     };
 
     const draw = () => {
       step();
+      if (layoutMode === "galaxy" && !dragging) view._cam.yaw += 0.0016;
       const ctx = canvas.getContext("2d");
       const dpr = window.devicePixelRatio || 1;
       const w = canvas.width / dpr;
@@ -682,28 +791,72 @@ class WordTrackerView extends ItemView {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
       const style = getComputedStyle(canvas);
-      const fg = style.getPropertyValue("--text-normal").trim() || "#ddd";
-      const muted = style.getPropertyValue("--text-muted").trim() || "#888";
+      const fg = layoutMode === "galaxy" ? "#f4f7ff" : (style.getPropertyValue("--text-normal").trim() || "#ddd");
+      const muted = layoutMode === "galaxy" ? "#9eb0c8" : (style.getPropertyValue("--text-muted").trim() || "#888");
       const cx = w / 2;
-      const cy = h / 2 + 6;
+      const cy = h / 2 + 8;
       const yaw = view._cam.yaw;
       const pitch = view._cam.pitch;
       const dist = view._cam.dist;
-      const sy = Math.sin(yaw);
+      const syaw = Math.sin(yaw);
       const cyaw = Math.cos(yaw);
       const sp = Math.sin(pitch);
       const cp = Math.cos(pitch);
 
       const project = (x, y, z) => {
-        const x1 = x * cyaw - z * sy;
-        const z1 = x * sy + z * cyaw;
+        const x1 = x * cyaw - z * syaw;
+        const z1 = x * syaw + z * cyaw;
         const y2 = y * cp - z1 * sp;
         const z2 = y * sp + z1 * cp;
-        const scale = 460 / (dist - z2);
-        return { sx: cx + x1 * scale, sy: cy - y2 * scale, depth: z2, scale };
+        const denom = dist - z2;
+        if (denom < 48) return { sx: cx, sy: cy, depth: z2, scale: 0.02, hidden: true };
+        const scale = 540 / denom;
+        return { sx: cx + x1 * scale, sy: cy - y2 * scale, depth: z2, scale, hidden: false };
       };
 
-      if (settings.graphLayout !== "links") {
+      if (layoutMode === "galaxy") {
+        const bg = ctx.createRadialGradient(cx, cy - 10, 18, cx, cy, Math.max(w, h) * 0.72);
+        bg.addColorStop(0, "#243456");
+        bg.addColorStop(0.38, "#10192c");
+        bg.addColorStop(1, "#070910");
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, w, h);
+        for (const star of dust) {
+          const p = project(star.x, star.y, star.z);
+          if (p.hidden) continue;
+          const twinkle = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(view._spin * 3 + star.tw));
+          ctx.globalAlpha = 0.18 + twinkle * 0.45;
+          ctx.fillStyle = "#d7e4ff";
+          ctx.fillRect(p.sx, p.sy, star.s, star.s);
+        }
+        ctx.globalAlpha = 1;
+        const core = project(0, 0, 0);
+        if (!core.hidden) {
+          const glow = ctx.createRadialGradient(core.sx, core.sy, 0, core.sx, core.sy, 78 * core.scale);
+          glow.addColorStop(0, "rgba(255, 236, 210, 0.55)");
+          glow.addColorStop(0.35, "rgba(120, 160, 255, 0.18)");
+          glow.addColorStop(1, "rgba(80, 110, 200, 0)");
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(core.sx, core.sy, 78 * core.scale, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.lineWidth = 1.4;
+        for (let arm = 0; arm < 3; arm++) {
+          ctx.beginPath();
+          let started = false;
+          for (let t = 0; t <= 1; t += 0.035) {
+            const angle = arm * (Math.PI * 2 / 3) + t * 1.75 * Math.PI * 2;
+            const radius = 48 + (0.16 + 0.84 * t) * 236;
+            const p = project(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+            if (p.hidden) { started = false; continue; }
+            if (!started) { ctx.moveTo(p.sx, p.sy); started = true; }
+            else ctx.lineTo(p.sx, p.sy);
+          }
+          ctx.strokeStyle = "rgba(186, 206, 255, 0.22)";
+          ctx.stroke();
+        }
+      } else if (layoutMode === "metric") {
         const axis = [
           { key: settings.graphX, dir: [1, 0, 0], name: "X" },
           { key: settings.graphY, dir: [0, 1, 0], name: "Y" },
@@ -732,22 +885,24 @@ class WordTrackerView extends ItemView {
       projected.length = 0;
       const pts = nodes.map((node) => {
         const p = project(node.x, node.y, node.z);
-        const size = 5 + normFixed(node, settings.graphSize) * 14;
-        return Object.assign({ node, r: Math.max(4, size * p.scale) }, p);
-      }).sort((a, b) => a.depth - b.depth);
+        const size = layoutMode === "galaxy" ? 2.4 + normFixed(node, settings.graphSize) * 6.5 : 5 + normFixed(node, settings.graphSize) * 14;
+        return Object.assign({ node, r: Math.max(layoutMode === "galaxy" ? 2.2 : 4, size * Math.max(0.35, p.scale)) }, p);
+      }).filter((pt) => !pt.hidden).sort((a, b) => a.depth - b.depth);
 
       if (settings.graphShowEdges) {
         const focus = view.hoverWord || view.selectedWord;
-        const accent = style.getPropertyValue("--interactive-accent").trim() || "#7c6cf0";
+        const accent = style.getPropertyValue("--interactive-accent").trim() || "#d7e4ff";
         for (const edge of edges) {
           const a = byId[edge.a];
           const b = byId[edge.b];
           const linked = !focus || edge.a === focus || edge.b === focus;
+          if (layoutMode === "galaxy" && !linked && edge.w < 2) continue;
           const pa = project(a.x, a.y, a.z);
           const pb = project(b.x, b.y, b.z);
-          ctx.strokeStyle = linked && focus ? accent : muted;
-          ctx.globalAlpha = linked ? Math.min(0.9, 0.28 + edge.w * 0.12) : 0.08;
-          ctx.lineWidth = linked ? Math.min(4.5, 1.2 + edge.w * 0.45) : 0.6;
+          if (pa.hidden || pb.hidden) continue;
+          ctx.strokeStyle = linked && focus ? accent : (layoutMode === "galaxy" ? "rgba(255, 214, 170, 0.9)" : muted);
+          ctx.globalAlpha = linked ? Math.min(0.75, 0.12 + edge.w * 0.1) : 0.05;
+          ctx.lineWidth = linked ? Math.min(2.4, 0.6 + edge.w * 0.28) : 0.5;
           ctx.beginPath();
           ctx.moveTo(pa.sx, pa.sy);
           ctx.lineTo(pb.sx, pb.sy);
@@ -759,24 +914,38 @@ class WordTrackerView extends ItemView {
       const focusId = view.hoverWord || view.selectedWord;
       for (const pt of pts) {
         const node = pt.node;
-        const color = mixHex(normFixed(node, settings.graphColor));
+        const heat = 1 - normFixed(node, settings.graphColor);
+        const stellar = starColor(layoutMode === "galaxy" ? heat * 0.85 : normFixed(node, settings.graphColor));
+        const color = layoutMode === "galaxy" ? stellar.rgb : mixHex(normFixed(node, settings.graphColor));
         const hot = node.id === focusId;
         const neighbor = !focusId || hot || edges.some((edge) => (edge.a === focusId && edge.b === node.id) || (edge.b === focusId && edge.a === node.id));
+        if (layoutMode === "galaxy") {
+          const glowR = pt.r * (hot ? 7 : 4.6);
+          const glow = ctx.createRadialGradient(pt.sx, pt.sy, 0, pt.sx, pt.sy, glowR);
+          glow.addColorStop(0, `rgba(255,255,255,${neighbor ? 0.95 : 0.45})`);
+          glow.addColorStop(0.22, `rgba(${stellar.r}, ${stellar.g}, ${stellar.b}, ${neighbor ? 0.8 : 0.28})`);
+          glow.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(pt.sx, pt.sy, glowR, 0, Math.PI * 2);
+          ctx.fill();
+        }
         ctx.beginPath();
-        ctx.fillStyle = color;
-        ctx.globalAlpha = neighbor ? 0.95 : 0.22;
+        ctx.fillStyle = layoutMode === "galaxy" ? "#fffaf2" : color;
+        ctx.globalAlpha = neighbor ? 0.95 : 0.28;
         ctx.arc(pt.sx, pt.sy, pt.r, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = neighbor ? 1 : 0.35;
         if (node.watch || hot) {
-          ctx.strokeStyle = node.watch ? "#e0a100" : fg;
-          ctx.lineWidth = hot ? 2 : 1.4;
+          ctx.strokeStyle = node.watch ? "#f0c14a" : fg;
+          ctx.lineWidth = hot ? 1.6 : 1.1;
           ctx.stroke();
         }
-        if (neighbor && (hot || node.watch || pt.r > 11)) {
+        if (neighbor && (hot || node.watch || pt.r > (layoutMode === "galaxy" ? 3.4 : 11))) {
           ctx.fillStyle = fg;
           ctx.font = "12px sans-serif";
-          ctx.fillText(node.id, pt.sx + pt.r + 4, pt.sy + 4);
+          ctx.fillText(node.id, pt.sx + pt.r + 5, pt.sy + 4);
         }
         projected.push({ id: node.id, sx: pt.sx, sy: pt.sy, r: pt.r });
       }
@@ -790,6 +959,8 @@ class WordTrackerView extends ItemView {
           .map((edge) => edge.a === focusId ? edge.b : edge.a);
         const extra = names.length ? ` · with ${names.join(", ")}` : "";
         hud.setText(`${focusNode.id} · ${focusNode.links} connections · count ${focusNode.count}${extra}`);
+      } else if (layoutMode === "galaxy") {
+        hud.setText("Galaxy · drag to orbit · scroll to zoom · frequent words sit nearer the core");
       } else {
         hud.setText("Drag to orbit · scroll or pinch to zoom · click a word to see its connections");
       }
@@ -973,7 +1144,7 @@ class WordTrackerPlugin extends Plugin {
       callback: async () => {
         this._openGraph = true;
         this.settings.panelMode = "graph";
-        this.settings.graphLayout = "links";
+        this.settings.graphLayout = "galaxy";
         this.settings.graphShowEdges = true;
         await this.saveSettings();
         await this.activateView();
@@ -1017,7 +1188,10 @@ class WordTrackerPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     if (!["global", "file", "folder"].includes(this.settings.scope)) this.settings.scope = "global";
     if (!["list", "graph"].includes(this.settings.panelMode)) this.settings.panelMode = "list";
-    if (!["metric", "links"].includes(this.settings.graphLayout)) this.settings.graphLayout = "links";
+    if (!["metric", "links", "galaxy"].includes(this.settings.graphLayout) || !this.settings.sawGalaxy) {
+      this.settings.graphLayout = "galaxy";
+      this.settings.sawGalaxy = true;
+    }
     for (const key of ["graphX", "graphY", "graphZ", "graphSize", "graphColor", "graphHeight"]) {
       if (!GRAPH_METRICS.some((m) => m.id === this.settings[key])) this.settings[key] = DEFAULT_SETTINGS[key];
     }
