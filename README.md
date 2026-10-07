@@ -17,7 +17,7 @@ Unique Word Tracker watches a list you choose, then shows those counts next to a
 - Watchlist for words you want counted first
 - Three scopes: whole vault, current note, current folder
 - Most-used word list with a clickable note breakdown
-- 3D graph with separate metrics for position, size, and color
+- 3D connection graph: words that share a note are linked
 - Metric space or co-occurrence layout
 - Live updates after you edit a note
 - Stopwords and folder excludes
@@ -53,10 +53,7 @@ After the plugin is accepted into the directory:
    - **This note** — only the active file
    - **This folder** — notes in the same folder as that file
 4. Click a word to see which notes use it
-5. Switch to **3D graph** and assign metrics:
-   - **Metric space** — X, Y, and Z are independent metrics
-   - **Co-occurrence** — words that share a note pull together; height is its own metric
-   - **Size** and **Color** — count, notes, spread, links, length, or watchlist
+5. Switch to **3D graph**. Words that appear in the same note are linked. Click a word to see only its connections. Metric space is still in the Layout menu if you want X, Y, and Z to be separate metrics.
 
 Use **Rescan** only after changing tokenization settings such as minimum length, case sensitivity, or excluded folders.
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0
+
+- 3D graph now opens on word connections
+- Lines link words that appear in the same note, thicker when they share more notes
+- Click a word to isolate its links and list the shared-note counts
+- Each word keeps its strongest connections instead of only the global top edges
+
 ## 1.1.0
 
 - Add a 3D graph of the words in the current scope

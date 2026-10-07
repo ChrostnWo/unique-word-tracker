@@ -1,7 +1,7 @@
 {
   "id": "unique-word-tracker",
   "name": "Unique Word Tracker",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "minAppVersion": "1.4.0",
   "description": "Track how often you use specific words across the vault, the current note, or the current folder, and explore them on a 3D graph.",
   "author": "Chrostn",

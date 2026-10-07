@@ -22,9 +22,11 @@ The rest of the writing is ranked below the watchlist. Stopwords are hidden from
 
 ## 3D graph
 
-Switch the panel to **3D graph**, or run **Open 3D graph** from the command palette.
+Switch the panel to **3D graph**, or run **Open 3D graph** from the command palette. It opens on **Connections**.
 
-Each node is a word. You can assign a different metric to each visual channel:
+Each node is a word. A line means those two words appear in the same note. Thicker lines share more notes. Click a word to dim everything else and list its connections underneath.
+
+Size and color can still use a different metric from position:
 
 | Channel | What it changes |
 | --- | --- |

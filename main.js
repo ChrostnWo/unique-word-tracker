@@ -37,7 +37,7 @@ const DEFAULT_SETTINGS = {
   includeFrontmatter: false,
   scope: "global",
   panelMode: "list",
-  graphLayout: "metric",
+  graphLayout: "links",
   graphNodes: 42,
   graphShowEdges: true,
   graphX: "count",
@@ -204,6 +204,10 @@ class WordTrackerView extends ItemView {
       if ((this.plugin.settings.panelMode || "list") === mode.id) btn.addClass("is-active");
       btn.onclick = async () => {
         this.plugin.settings.panelMode = mode.id;
+        if (mode.id === "graph") {
+          this.plugin.settings.graphLayout = "links";
+          this.plugin.settings.graphShowEdges = true;
+        }
         await this.plugin.saveSettings();
         this.render();
       };
@@ -378,9 +382,9 @@ class WordTrackerView extends ItemView {
     const layoutWrap = toolbar.createDiv({ cls: "wt-metric" });
     layoutWrap.createSpan({ text: "Layout" });
     const layout = layoutWrap.createEl("select", { cls: "wt-select" });
+    layout.createEl("option", { text: "Connections", value: "links" });
     layout.createEl("option", { text: "Metric space", value: "metric" });
-    layout.createEl("option", { text: "Co-occurrence", value: "links" });
-    layout.value = this.plugin.settings.graphLayout === "links" ? "links" : "metric";
+    layout.value = this.plugin.settings.graphLayout === "metric" ? "metric" : "links";
     layout.onchange = async () => {
       this.plugin.settings.graphLayout = layout.value;
       await this.plugin.saveSettings();
@@ -426,21 +430,47 @@ class WordTrackerView extends ItemView {
 
     const stage = body.createDiv({ cls: "wt-graph-stage" });
     const canvas = stage.createEl("canvas", { cls: "wt-graph-canvas" });
-    const hud = stage.createDiv({ cls: "wt-graph-hud", text: "Drag to orbit · scroll or pinch to zoom · click a word" });
+    const hud = stage.createDiv({ cls: "wt-graph-hud", text: "Drag to orbit · scroll or pinch to zoom · click a word to see its connections" });
 
     const legend = body.createDiv({ cls: "wt-legend" });
-    const layoutName = this.plugin.settings.graphLayout === "links" ? "Co-occurrence" : "Metric space";
-    const axes = this.plugin.settings.graphLayout === "links"
-      ? `Height ${metricLabel(this.plugin.settings.graphHeight)}`
-      : `X ${metricLabel(this.plugin.settings.graphX)} · Y ${metricLabel(this.plugin.settings.graphY)} · Z ${metricLabel(this.plugin.settings.graphZ)}`;
+    const layoutName = this.plugin.settings.graphLayout === "metric" ? "Metric space" : "Connections";
+    const axes = this.plugin.settings.graphLayout === "metric"
+      ? `X ${metricLabel(this.plugin.settings.graphX)} · Y ${metricLabel(this.plugin.settings.graphY)} · Z ${metricLabel(this.plugin.settings.graphZ)}`
+      : `Height ${metricLabel(this.plugin.settings.graphHeight)} · ${graph.edges.length} links`;
     legend.createSpan({ text: `${layoutName} · ${axes} · Size ${metricLabel(this.plugin.settings.graphSize)} · Color ${metricLabel(this.plugin.settings.graphColor)}` });
     legend.createDiv({
       cls: "wt-muted",
-      text: "Edges mean the words share a note. Watchlist words have a ring. Spread is notes divided by count."
+      text: "A line means those words appear in the same note. Thicker lines share more notes. Click a word to isolate its connections."
     });
 
     this.mountGraph(canvas, hud, graph);
+    this.renderConnections(body, graph);
     if (this.selectedWord) this.renderNotes(body, this.selectedWord);
+  }
+
+  renderConnections(parent, graph) {
+    const word = this.selectedWord || this.hoverWord;
+    const box = parent.createDiv({ cls: "wt-notes" });
+    box.createEl("h3", { text: word ? `Connections for “${word}”` : "Strongest connections" });
+    const rows = graph.edges
+      .filter((edge) => !word || edge.a === word || edge.b === word)
+      .slice(0, word ? 20 : 12);
+    if (!rows.length) {
+      box.createDiv({ cls: "wt-muted", text: "No shared notes between the words in this graph." });
+      return;
+    }
+    for (const edge of rows) {
+      const other = word ? (edge.a === word ? edge.b : edge.a) : null;
+      const line = box.createDiv({ cls: "wt-note-row" });
+      const label = other || `${edge.a} — ${edge.b}`;
+      const link = line.createEl("a", { text: label, href: "#" });
+      link.onclick = (e) => {
+        e.preventDefault();
+        this.selectedWord = other || edge.a;
+        this.render();
+      };
+      line.createSpan({ cls: "wt-muted", text: `${edge.w} shared ${edge.w === 1 ? "note" : "notes"}` });
+    }
   }
 
   mountGraph(canvas, hud, graph) {
@@ -707,14 +737,17 @@ class WordTrackerView extends ItemView {
       }).sort((a, b) => a.depth - b.depth);
 
       if (settings.graphShowEdges) {
+        const focus = view.hoverWord || view.selectedWord;
+        const accent = style.getPropertyValue("--interactive-accent").trim() || "#7c6cf0";
         for (const edge of edges) {
           const a = byId[edge.a];
           const b = byId[edge.b];
+          const linked = !focus || edge.a === focus || edge.b === focus;
           const pa = project(a.x, a.y, a.z);
           const pb = project(b.x, b.y, b.z);
-          ctx.strokeStyle = muted;
-          ctx.globalAlpha = Math.min(0.45, 0.08 + edge.w * 0.08);
-          ctx.lineWidth = Math.min(3, 0.6 + edge.w * 0.35);
+          ctx.strokeStyle = linked && focus ? accent : muted;
+          ctx.globalAlpha = linked ? Math.min(0.9, 0.28 + edge.w * 0.12) : 0.08;
+          ctx.lineWidth = linked ? Math.min(4.5, 1.2 + edge.w * 0.45) : 0.6;
           ctx.beginPath();
           ctx.moveTo(pa.sx, pa.sy);
           ctx.lineTo(pb.sx, pb.sy);
@@ -723,35 +756,42 @@ class WordTrackerView extends ItemView {
       }
       ctx.globalAlpha = 1;
 
+      const focusId = view.hoverWord || view.selectedWord;
       for (const pt of pts) {
         const node = pt.node;
         const color = mixHex(normFixed(node, settings.graphColor));
-        const hot = node.id === view.hoverWord || node.id === view.selectedWord;
+        const hot = node.id === focusId;
+        const neighbor = !focusId || hot || edges.some((edge) => (edge.a === focusId && edge.b === node.id) || (edge.b === focusId && edge.a === node.id));
         ctx.beginPath();
         ctx.fillStyle = color;
-        ctx.globalAlpha = 0.95;
+        ctx.globalAlpha = neighbor ? 0.95 : 0.22;
         ctx.arc(pt.sx, pt.sy, pt.r, 0, Math.PI * 2);
         ctx.fill();
-        ctx.globalAlpha = 1;
+        ctx.globalAlpha = neighbor ? 1 : 0.35;
         if (node.watch || hot) {
           ctx.strokeStyle = node.watch ? "#e0a100" : fg;
           ctx.lineWidth = hot ? 2 : 1.4;
           ctx.stroke();
         }
-        if (hot || node.watch || pt.r > 11) {
+        if (neighbor && (hot || node.watch || pt.r > 11)) {
           ctx.fillStyle = fg;
           ctx.font = "12px sans-serif";
           ctx.fillText(node.id, pt.sx + pt.r + 4, pt.sy + 4);
         }
         projected.push({ id: node.id, sx: pt.sx, sy: pt.sy, r: pt.r });
       }
+      ctx.globalAlpha = 1;
 
-      const focus = view.hoverWord || view.selectedWord;
-      const focusNode = focus ? byId[focus] : null;
+      const focusNode = focusId ? byId[focusId] : null;
       if (focusNode) {
-        hud.setText(`${focusNode.id} · count ${focusNode.count} · notes ${focusNode.notes} · spread ${focusNode.spread.toFixed(2)} · links ${focusNode.links}`);
+        const names = edges
+          .filter((edge) => edge.a === focusId || edge.b === focusId)
+          .slice(0, 4)
+          .map((edge) => edge.a === focusId ? edge.b : edge.a);
+        const extra = names.length ? ` · with ${names.join(", ")}` : "";
+        hud.setText(`${focusNode.id} · ${focusNode.links} connections · count ${focusNode.count}${extra}`);
       } else {
-        hud.setText("Drag to orbit · scroll or pinch to zoom · click a word");
+        hud.setText("Drag to orbit · scroll or pinch to zoom · click a word to see its connections");
       }
       view._raf = requestAnimationFrame(draw);
     };
@@ -933,6 +973,8 @@ class WordTrackerPlugin extends Plugin {
       callback: async () => {
         this._openGraph = true;
         this.settings.panelMode = "graph";
+        this.settings.graphLayout = "links";
+        this.settings.graphShowEdges = true;
         await this.saveSettings();
         await this.activateView();
         this.refreshViews();
@@ -975,7 +1017,7 @@ class WordTrackerPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     if (!["global", "file", "folder"].includes(this.settings.scope)) this.settings.scope = "global";
     if (!["list", "graph"].includes(this.settings.panelMode)) this.settings.panelMode = "list";
-    if (!["metric", "links"].includes(this.settings.graphLayout)) this.settings.graphLayout = "metric";
+    if (!["metric", "links"].includes(this.settings.graphLayout)) this.settings.graphLayout = "links";
     for (const key of ["graphX", "graphY", "graphZ", "graphSize", "graphColor", "graphHeight"]) {
       if (!GRAPH_METRICS.some((m) => m.id === this.settings[key])) this.settings[key] = DEFAULT_SETTINGS[key];
     }
@@ -1075,12 +1117,27 @@ class WordTrackerPlugin extends Plugin {
       }
     }
     const degree = {};
-    let edges = Object.entries(pair).map(([key, w]) => {
+    const allEdges = Object.entries(pair).map(([key, w]) => {
       const parts = key.split("\0");
-      degree[parts[0]] = (degree[parts[0]] || 0) + 1;
-      degree[parts[1]] = (degree[parts[1]] || 0) + 1;
       return { a: parts[0], b: parts[1], w };
-    }).sort((a, b) => b.w - a.w).slice(0, 90);
+    }).sort((a, b) => b.w - a.w);
+    const kept = [];
+    const seen = new Set();
+    const perNode = {};
+    for (const edge of allEdges) {
+      const key = edge.a + "\0" + edge.b;
+      const left = perNode[edge.a] || 0;
+      const right = perNode[edge.b] || 0;
+      if (left >= 4 && right >= 4) continue;
+      if (kept.length >= 140 && left >= 1 && right >= 1) continue;
+      kept.push(edge);
+      seen.add(key);
+      perNode[edge.a] = left + 1;
+      perNode[edge.b] = right + 1;
+      degree[edge.a] = (degree[edge.a] || 0) + 1;
+      degree[edge.b] = (degree[edge.b] || 0) + 1;
+    }
+    const edges = kept;
     const nodes = ranked.filter((word) => chosen.has(word)).map((word) => {
       const count = this.counts[word] || 0;
       const notes = noteCount[word] || 0;
